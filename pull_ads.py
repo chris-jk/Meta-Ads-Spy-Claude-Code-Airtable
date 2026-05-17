@@ -26,6 +26,7 @@ from pathlib import Path
 
 from lib.creative_extractor import extract_batch
 from lib.meta_ads import fetch_ads_for_page, get_token, resolve_page_id
+from lib.ui_scraper import scrape_page_ads
 
 REPO_ROOT = Path(__file__).parent
 
@@ -237,6 +238,14 @@ def main() -> None:
     parser.add_argument("--write-to-airtable", action="store_true", help="Write results directly to Airtable (needs AIRTABLE_PAT in .env)")
     parser.add_argument("--base-id", type=str, help="Airtable base ID (required with --write-to-airtable)")
     parser.add_argument("--transcribe", action="store_true", help="Transcribe video ads using OpenAI Whisper (local, free, adds ~10-15s per video)")
+    parser.add_argument(
+        "--source",
+        default="auto",
+        choices=["auto", "api", "ui"],
+        help="Where to pull ads from. 'api' = Ad Library API (EU/UK commercial + global political only). "
+             "'ui' = scrape the public web UI (works everywhere, slower). "
+             "'auto' = try API, fall back to UI if it returns 0 ads.",
+    )
     args = parser.parse_args()
 
     token = get_token()
@@ -248,17 +257,36 @@ def main() -> None:
     def fetch_one_page(page_input: str):
         pid, resolved_name = resolve_page_id(page_input, token)
         if not pid:
-            return page_input, None, None, "could not resolve page ID"
-        ads, err = fetch_ads_for_page(
-            pid, token,
-            countries=args.countries,
-            days_back=args.days,
-            max_ads=args.ads_per_page,
-            sort_by=args.sort_by,
-            ad_active_status="ACTIVE" if args.active_only else "ALL",
-            media_type=args.media_type,
-        )
-        return page_input, ads or [], resolved_name, err
+            return page_input, None, None, "could not resolve page ID", "none"
+
+        ads: list[dict] = []
+        err = None
+        used = "api"
+
+        if args.source in ("api", "auto"):
+            ads, err = fetch_ads_for_page(
+                pid, token,
+                countries=args.countries,
+                days_back=args.days,
+                max_ads=args.ads_per_page,
+                sort_by=args.sort_by,
+                ad_active_status="ACTIVE" if args.active_only else "ALL",
+                media_type=args.media_type,
+            )
+            ads = ads or []
+
+        if args.source == "ui" or (args.source == "auto" and not ads and not err):
+            ads = scrape_page_ads(
+                pid,
+                country=args.countries,
+                max_ads=args.ads_per_page,
+                active_only=args.active_only,
+                headless=not args.no_headless,
+            )
+            used = "ui"
+            err = None
+
+        return page_input, ads, resolved_name, err, used
 
     t0 = time.time()
     print(f"\n[phase 1] fetching ads for {len(page_inputs)} pages in parallel...", flush=True)
@@ -266,11 +294,12 @@ def main() -> None:
     with ThreadPoolExecutor(max_workers=min(len(page_inputs), 8)) as pool:
         futures = {pool.submit(fetch_one_page, p): p for p in page_inputs}
         for future in as_completed(futures):
-            page_input, ads, resolved_name, err = future.result()
+            page_input, ads, resolved_name, err, used = future.result()
             if err:
                 print(f"  {page_input}: {err}", flush=True)
                 continue
-            print(f"  {page_input}: {len(ads)} ads" + (f" ({resolved_name})" if resolved_name else ""), flush=True)
+            src_tag = f" [via {used}]" if used != "none" else ""
+            print(f"  {page_input}: {len(ads)} ads{src_tag}" + (f" ({resolved_name})" if resolved_name else ""), flush=True)
             pages_with_ads.append((page_input, ads))
     print(f"[phase 1] done in {time.time()-t0:.1f}s — {sum(len(a) for _, a in pages_with_ads)} total ads", flush=True)
 
