@@ -22,8 +22,11 @@ TABLE_NAME = "Competitor Ads"
 
 def main():
     parser = argparse.ArgumentParser(description="Create Competitor Ads table in Airtable")
-    parser.add_argument("--base-id", required=True, help="Airtable base ID (starts with app...)")
+    parser.add_argument("--base-id", default=os.getenv("AIRTABLE_BASE_ID"),
+                        help="Airtable base ID (defaults to AIRTABLE_BASE_ID env var)")
     args = parser.parse_args()
+    if not args.base_id:
+        sys.exit("No base ID — pass --base-id or set AIRTABLE_BASE_ID in .env")
 
     pat = os.getenv("AIRTABLE_PAT")
     if not pat:

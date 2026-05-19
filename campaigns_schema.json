@@ -1,0 +1,155 @@
+{
+  "tables": [
+    {
+      "table_name": "Clients",
+      "description": "Ad accounts you run campaigns for. One row per account.",
+      "fields": [
+        { "name": "Client Name", "type": "singleLineText" },
+        { "name": "Ad Account ID", "type": "singleLineText", "description": "e.g. act_1955134975205326" },
+        { "name": "Page ID", "type": "singleLineText", "description": "Facebook page the ads run from" },
+        { "name": "Instagram Account ID", "type": "singleLineText", "description": "Optional, for IG placements" },
+        { "name": "Pixel ID", "type": "singleLineText", "description": "Required for conversion campaigns" },
+        { "name": "Default Currency", "type": "singleSelect", "options": { "choices": [
+          { "name": "USD" }, { "name": "GBP" }, { "name": "EUR" }, { "name": "CAD" }, { "name": "AUD" }
+        ] } },
+        { "name": "Default Countries", "type": "multipleSelects", "options": { "choices": [
+          { "name": "US" }, { "name": "GB" }, { "name": "CA" }, { "name": "AU" }, { "name": "DE" }, { "name": "FR" }, { "name": "ES" }, { "name": "IT" }, { "name": "NL" }
+        ] } },
+        { "name": "Status", "type": "singleSelect", "options": { "choices": [
+          { "name": "Active", "color": "greenBright" },
+          { "name": "Paused", "color": "grayBright" }
+        ] } },
+        { "name": "Notes", "type": "multilineText" }
+      ]
+    },
+    {
+      "table_name": "Campaigns",
+      "description": "Ad campaigns to launch via the Meta Marketing API.",
+      "fields": [
+        { "name": "Name", "type": "singleLineText" },
+        { "name": "Client", "type": "multipleRecordLinks", "options": { "linkedTableName": "Clients" } },
+        { "name": "Status", "type": "singleSelect", "options": { "choices": [
+          { "name": "Draft", "color": "grayBright" },
+          { "name": "Ready to launch", "color": "yellowBright" },
+          { "name": "Launched", "color": "greenBright" },
+          { "name": "Failed", "color": "redBright" }
+        ] } },
+        { "name": "Objective", "type": "singleSelect", "options": { "choices": [
+          { "name": "OUTCOME_TRAFFIC" },
+          { "name": "OUTCOME_LEADS" },
+          { "name": "OUTCOME_SALES" },
+          { "name": "OUTCOME_AWARENESS" },
+          { "name": "OUTCOME_ENGAGEMENT" },
+          { "name": "OUTCOME_APP_PROMOTION" }
+        ] } },
+        { "name": "Daily Budget (USD)", "type": "number", "options": { "precision": 2 } },
+        { "name": "Start Date", "type": "date", "options": { "dateFormat": { "name": "iso" } } },
+        { "name": "End Date", "type": "date", "options": { "dateFormat": { "name": "iso" } } },
+        { "name": "Countries", "type": "multipleSelects", "options": { "choices": [
+          { "name": "US" }, { "name": "GB" }, { "name": "CA" }, { "name": "AU" }, { "name": "DE" }, { "name": "FR" }, { "name": "ES" }, { "name": "IT" }, { "name": "NL" }
+        ] } },
+        { "name": "Age Min", "type": "number", "options": { "precision": 0 } },
+        { "name": "Age Max", "type": "number", "options": { "precision": 0 } },
+        { "name": "Genders", "type": "singleSelect", "options": { "choices": [
+          { "name": "All" }, { "name": "Men" }, { "name": "Women" }
+        ] } },
+        { "name": "Interests", "type": "multilineText", "description": "Comma-separated interest names; resolved to IDs via Targeting Search." },
+        { "name": "Placements", "type": "singleSelect", "options": { "choices": [
+          { "name": "Automatic" },
+          { "name": "Facebook + Instagram" },
+          { "name": "Facebook only" },
+          { "name": "Instagram only" }
+        ] } },
+        { "name": "Headline", "type": "singleLineText" },
+        { "name": "Primary Text", "type": "multilineText" },
+        { "name": "Description", "type": "multilineText" },
+        { "name": "CTA", "type": "singleSelect", "options": { "choices": [
+          { "name": "LEARN_MORE" }, { "name": "SHOP_NOW" }, { "name": "SIGN_UP" }, { "name": "SUBSCRIBE" }, { "name": "DOWNLOAD" }, { "name": "GET_OFFER" }, { "name": "CONTACT_US" }, { "name": "BOOK_TRAVEL" }, { "name": "INSTALL_MOBILE_APP" }
+        ] } },
+        { "name": "Destination URL", "type": "url" },
+        { "name": "Pixel Event", "type": "singleSelect", "description": "Required for OUTCOME_SALES / OUTCOME_LEADS. The standard Meta event to optimize for.", "options": { "choices": [
+          { "name": "PURCHASE" },
+          { "name": "SUBSCRIBE" },
+          { "name": "LEAD" },
+          { "name": "COMPLETE_REGISTRATION" },
+          { "name": "INITIATE_CHECKOUT" },
+          { "name": "ADD_TO_CART" },
+          { "name": "ADD_PAYMENT_INFO" },
+          { "name": "VIEW_CONTENT" },
+          { "name": "SCHEDULE" }
+        ] } },
+        { "name": "Creative Image", "type": "multipleAttachments", "description": "Image creative (use this OR Video URL)" },
+        { "name": "Video URL", "type": "url", "description": "Public URL to a video file (use this OR Creative Image)" },
+        { "name": "Campaign ID", "type": "singleLineText", "description": "Written by script after launch" },
+        { "name": "Ad Set ID", "type": "singleLineText", "description": "Written by script after launch" },
+        { "name": "Ad ID", "type": "singleLineText", "description": "Written by script after launch" },
+        { "name": "Launch Log", "type": "multilineText", "description": "Errors / status messages from the launch script" },
+        { "name": "Launched At", "type": "dateTime", "options": { "dateFormat": { "name": "iso" }, "timeFormat": { "name": "24hour" }, "timeZone": "utc" } }
+      ]
+    },
+    {
+      "table_name": "Performance",
+      "description": "Daily ad performance from Meta Insights API. One row per ad per day. Upserted by pull_insights.py via the Record Key field (format: {ad_id}_{YYYY-MM-DD}).",
+      "fields": [
+        { "name": "Record Key", "type": "singleLineText", "description": "Upsert key: {ad_id}_{YYYY-MM-DD}" },
+        { "name": "Date", "type": "date", "options": { "dateFormat": { "name": "iso" } } },
+        { "name": "Campaign", "type": "multipleRecordLinks", "options": { "linkedTableName": "Campaigns" } },
+        { "name": "Ad ID", "type": "singleLineText", "description": "Meta ad ID" },
+        { "name": "Ad Name", "type": "singleLineText" },
+        { "name": "Spend", "type": "number", "options": { "precision": 2 } },
+        { "name": "Impressions", "type": "number", "options": { "precision": 0 } },
+        { "name": "Reach", "type": "number", "options": { "precision": 0 } },
+        { "name": "Frequency", "type": "number", "options": { "precision": 2 } },
+        { "name": "Clicks", "type": "number", "options": { "precision": 0 } },
+        { "name": "CTR", "type": "number", "options": { "precision": 4 }, "description": "Click-through rate (decimal, e.g. 0.0125 = 1.25%)" },
+        { "name": "CPC", "type": "number", "options": { "precision": 2 } },
+        { "name": "CPM", "type": "number", "options": { "precision": 2 } },
+        { "name": "Results", "type": "number", "options": { "precision": 0 }, "description": "Count of the campaign's optimization event (leads, purchases, etc.)" },
+        { "name": "Cost per Result", "type": "number", "options": { "precision": 2 } },
+        { "name": "Conversion Value", "type": "number", "options": { "precision": 2 }, "description": "Revenue attributed by Meta (purchases/leads value)" },
+        { "name": "ROAS", "type": "number", "options": { "precision": 2 } },
+        { "name": "Synced At", "type": "dateTime", "options": { "dateFormat": { "name": "iso" }, "timeFormat": { "name": "24hour" }, "timeZone": "utc" } }
+      ]
+    },
+    {
+      "table_name": "Ad Briefs",
+      "description": "Per-variant image generation briefs. One row per ad image. Templates (Style A/B scaffolds) live in repo at letsgosite_ads/campaigns/ai_briefs/_template_*.md. Designer/AI generates candidates → attaches to Candidates field → owner picks winner → links to Campaign for launch.",
+      "fields": [
+        { "name": "Slug", "type": "singleLineText", "description": "Unique slug like 'solo_pixel_a'. Matches UTM ad parameter." },
+        { "name": "Tier", "type": "singleSelect", "options": { "choices": [
+          { "name": "Solo $29" }, { "name": "Lite $99" }, { "name": "Growth $297" }, { "name": "Pro $347" }, { "name": "AI Demo" }
+        ] } },
+        { "name": "Style", "type": "singleSelect", "options": { "choices": [
+          { "name": "A - Typography" }, { "name": "B - Person + Paper" }
+        ] } },
+        { "name": "Angle", "type": "singleLineText", "description": "Short label for the creative angle, e.g. 'pixel tracking', 'missed calls', 'credibility'." },
+        { "name": "Status", "type": "singleSelect", "options": { "choices": [
+          { "name": "Draft", "color": "grayBright" },
+          { "name": "Ready to Generate", "color": "yellowBright" },
+          { "name": "Generated", "color": "blueBright" },
+          { "name": "Winner Picked", "color": "greenBright" },
+          { "name": "Launched", "color": "purpleBright" },
+          { "name": "Rejected", "color": "redBright" }
+        ] } },
+        { "name": "Hero Lines", "type": "multilineText", "description": "The big top-of-poster text. Line breaks preserved." },
+        { "name": "Price", "type": "singleLineText", "description": "e.g. '$29/mo'. Always largest element in Style A." },
+        { "name": "Sub-features", "type": "multilineText", "description": "Max 3 lines, one per bullet." },
+        { "name": "Footer Path", "type": "singleLineText", "description": "e.g. '/solo', '/lite', '/reserve-pro'." },
+        { "name": "Header Eyebrow", "type": "singleLineText", "description": "Optional top-line text, e.g. 'FOUNDING — FIRST 25 ONLY'." },
+        { "name": "Subject", "type": "multilineText", "description": "Style B only: who is holding the paper." },
+        { "name": "Setting", "type": "multilineText", "description": "Style B only: location, lighting, time of day." },
+        { "name": "Paper Type", "type": "singleLineText", "description": "Style B only: white printer / legal pad / cardboard / etc." },
+        { "name": "Lettering Style", "type": "singleLineText", "description": "Style B only: 'hand-lettered Sharpie' or 'printed'." },
+        { "name": "Paper Text", "type": "multilineText", "description": "Style B only: exact verbatim text rendered on the paper." },
+        { "name": "Pose Detail", "type": "multilineText", "description": "Style B only: hand position, gaze, paper angle." },
+        { "name": "Full Prompt", "type": "multilineText", "description": "The exact paragraph to paste into Flux 1.1 Pro / Imagen 3." },
+        { "name": "Candidates to Generate", "type": "number", "options": { "precision": 0 }, "description": "Style A: ~4. Style B: ~6 (lower yield)." },
+        { "name": "Candidates", "type": "multipleAttachments", "description": "All generated candidates. Designer attaches here." },
+        { "name": "Winner 1:1", "type": "multipleAttachments", "description": "The picked 1080x1080 image." },
+        { "name": "Winner 9:16", "type": "multipleAttachments", "description": "The picked 1080x1920 image." },
+        { "name": "Campaign", "type": "multipleRecordLinks", "options": { "linkedTableName": "Campaigns" }, "description": "Once launched, link to the Campaign row." },
+        { "name": "Notes", "type": "multilineText" }
+      ]
+    }
+  ]
+}
