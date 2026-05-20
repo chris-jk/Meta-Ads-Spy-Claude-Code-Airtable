@@ -21,9 +21,9 @@ from datetime import date, datetime, timedelta, timezone
 import requests
 from dotenv import load_dotenv
 
-load_dotenv()
+from lib.marketing_api import BASE_URL as GRAPH
 
-GRAPH = "https://graph.facebook.com/v21.0"
+load_dotenv()
 
 # Map Campaigns.Objective -> the action_type we count as "Results"
 RESULT_ACTION_BY_OBJECTIVE = {

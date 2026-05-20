@@ -72,6 +72,12 @@ def resolve_interests(api: MarketingAPI, names_csv: str | None) -> list[str]:
 
 
 def launch_one(row, clients, token, target_status, dry_run):
+    # Partial-failure note: this creates Campaign -> Ad Set -> Creative -> Ad
+    # in sequence on the Meta side. If a later step fails, earlier objects are
+    # NOT torn down — they remain in the ad account (PAUSED by default) and the
+    # Airtable row is marked Failed with the error in Launch Log. Clean up the
+    # orphan objects manually in Ads Manager before re-running, or the next run
+    # will create duplicates.
     fields = row["fields"]
     name = fields.get("Name") or "(unnamed)"
     log_lines = []

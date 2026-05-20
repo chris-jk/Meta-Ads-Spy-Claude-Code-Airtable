@@ -97,6 +97,7 @@ def main():
     created = 0
     skipped = 0
     failed = 0
+    attachment_failed = 0
 
     for stem, lane, headline, primary_text in ADS:
         name = f"[{lane}] {stem}"
@@ -133,12 +134,14 @@ def main():
         try:
             rec = table.create(fields)
             print(f"  created: {name}  ({rec['id']})")
+            created += 1
         except Exception as e:
             print(f"  FAILED create {name}: {e}")
             failed += 1
             continue
 
-        # Attach image
+        # Attach image. If upload fails, roll back the row so we don't leave
+        # an orphan with no creative (re-runs are idempotent by Name).
         try:
             with open(img_path, "rb") as fh:
                 content = fh.read()
@@ -150,12 +153,18 @@ def main():
                 content_type="image/png",
             )
             print(f"      attached: {img_path.name} ({len(content)//1024} KB)")
-            created += 1
         except Exception as e:
-            print(f"      FAILED attach {img_path.name}: {e}")
-            failed += 1
+            print(f"      FAILED attach {img_path.name} to {rec['id']}: {e}")
+            try:
+                table.delete(rec["id"])
+                print(f"      rolled back orphan row {rec['id']} ({name})")
+                created -= 1
+                attachment_failed += 1
+            except Exception as del_err:
+                print(f"      FAILED to delete orphan {rec['id']} ({name}): {del_err}")
+                attachment_failed += 1
 
-    print(f"\n{created} created, {skipped} skipped, {failed} failed.")
+    print(f"\n{created} created, {skipped} skipped, {failed} failed, {attachment_failed} attachment failed.")
 
 
 if __name__ == "__main__":

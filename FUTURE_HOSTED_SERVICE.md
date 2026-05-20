@@ -17,7 +17,7 @@ running. They never touch a terminal.
 ## What we already have (free, working today)
 
 - Local CLI: `pull_ads.py` → Selenium UI scraper → Airtable
-- Works for any country (US fixed via `lib/ui_scraper.py`)
+- Works for any country (US implementation in `lib/ui_scraper.py`)
 - Pulls full body copy, headline, landing, creative file, start date, days
   running (the "is this ad converting" signal)
 - Costs $0 to run on your laptop
