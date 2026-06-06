@@ -59,6 +59,10 @@ class MarketingAPI:
                 "status": status,
                 "special_ad_categories": "[]",
                 "buying_type": "AUCTION",
+                # Budget lives on the ad set (no campaign budget optimization),
+                # so Meta requires this flag be set explicitly. False = ad sets
+                # do not share budget.
+                "is_adset_budget_sharing_enabled": "false",
             },
         )
 
@@ -143,7 +147,21 @@ class MarketingAPI:
     # ---------- Creative ----------
     def upload_image(self, image_bytes: bytes, filename: str = "creative.jpg") -> str:
         """Upload image to ad account, return image_hash."""
-        files = {"filename": (filename, io.BytesIO(image_bytes))}
+        # Airtable download URLs carry no file extension, and an absent MIME type
+        # makes requests send application/octet-stream, which Meta rejects with
+        # FileTypeNotSupported. Detect the real type from the image's magic bytes.
+        if image_bytes[:8] == b"\x89PNG\r\n\x1a\n":
+            mime, ext = "image/png", ".png"
+        elif image_bytes[:3] == b"\xff\xd8\xff":
+            mime, ext = "image/jpeg", ".jpg"
+        elif image_bytes[:6] in (b"GIF87a", b"GIF89a"):
+            mime, ext = "image/gif", ".gif"
+        elif image_bytes[:4] == b"RIFF" and image_bytes[8:12] == b"WEBP":
+            mime, ext = "image/webp", ".webp"
+        else:
+            mime, ext = "image/jpeg", ".jpg"
+        fname = (os.path.splitext(filename)[0] or "creative") + ext
+        files = {fname: (fname, io.BytesIO(image_bytes), mime)}
         data = {"access_token": self.access_token}
         resp = requests.post(
             f"{BASE_URL}/{self.ad_account_id}/adimages",
