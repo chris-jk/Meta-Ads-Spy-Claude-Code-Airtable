@@ -229,9 +229,9 @@ class MarketingAPI:
             {
                 "name": name,
                 "object_story_spec": _json(object_story_spec),
-                "degrees_of_freedom_spec": _json(
-                    {"creative_features_spec": {"standard_enhancements": {"enroll_status": "OPT_OUT"}}}
-                ),
+                # Meta deprecated the standard_enhancements opt-out field in
+                # degrees_of_freedom_spec (error_subcode 3858504). Omitting it
+                # lets the account's default enhancement settings apply.
             },
         )
 
