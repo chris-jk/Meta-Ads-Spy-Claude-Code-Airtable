@@ -71,7 +71,7 @@ def resolve_interests(api: MarketingAPI, names_csv: str | None) -> list[str]:
     return ids
 
 
-def launch_one(row, clients, token, target_status, dry_run):
+def launch_one(row, clients, token, target_status, dry_run, optimization_goal=None):
     # Partial-failure note: this creates Campaign -> Ad Set -> Creative -> Ad
     # in sequence on the Meta side. If a later step fails, earlier objects are
     # NOT torn down — they remain in the ad account (PAUSED by default) and the
@@ -175,6 +175,7 @@ def launch_one(row, clients, token, target_status, dry_run):
         interest_ids=interest_ids,
         pixel_id=pixel_id,
         custom_event_type=pixel_event,
+        optimization_goal=optimization_goal,
     )
     adset_id = adset["id"]
     log(f"  Ad Set ID: {adset_id}")
@@ -246,6 +247,12 @@ def main():
         choices=["PAUSED", "ACTIVE"],
         help="Campaign/ad set/ad status after creation (default: PAUSED)",
     )
+    parser.add_argument(
+        "--optimization-goal",
+        choices=["LINK_CLICKS", "LANDING_PAGE_VIEWS"],
+        help="Override ad set optimization for non-conversion objectives "
+        "(e.g. LANDING_PAGE_VIEWS for OUTCOME_TRAFFIC). Ignored for Leads/Sales.",
+    )
     args = parser.parse_args()
 
     pat = os.getenv("AIRTABLE_PAT")
@@ -276,7 +283,7 @@ def main():
         name = row["fields"].get("Name") or "(unnamed)"
         print(f"\n--- {name} ({rid}) ---")
         try:
-            result = launch_one(row, clients, token, args.status, args.dry_run)
+            result = launch_one(row, clients, token, args.status, args.dry_run, args.optimization_goal)
             if args.dry_run:
                 campaigns_table.update(rid, {"Launch Log": result["log"]})
             else:

@@ -84,6 +84,7 @@ class MarketingAPI:
         interest_ids: list[str] | None = None,
         pixel_id: str | None = None,
         custom_event_type: str | None = None,
+        optimization_goal: str | None = None,
     ) -> dict:
         targeting: dict[str, Any] = {
             "geo_locations": {"countries": countries},
@@ -110,6 +111,13 @@ class MarketingAPI:
 
         # Optimization goal & billing event map to objective
         opt_goal, billing_event = _objective_to_optimization(objective)
+
+        # Explicit override (e.g. LANDING_PAGE_VIEWS for a Traffic campaign that
+        # would otherwise default to LINK_CLICKS). Conversion objectives below
+        # still force OFFSITE_CONVERSIONS, so this only takes effect for
+        # non-conversion objectives like OUTCOME_TRAFFIC.
+        if optimization_goal:
+            opt_goal = optimization_goal
 
         # Conversion objectives override optimization to OFFSITE_CONVERSIONS and
         # require a promoted_object pointing at the pixel + event.
