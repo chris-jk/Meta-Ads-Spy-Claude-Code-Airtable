@@ -10,3 +10,7 @@ logs/
 snapshot.html
 snapshot.png
 .DS_Store
+
+# Lead PII — never commit
+lead_phones.txt
+phones.txt

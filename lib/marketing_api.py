@@ -294,6 +294,49 @@ class MarketingAPI:
         )
         return body.get("data", [])
 
+    # ---------- Custom Audiences ----------
+    def create_custom_audience(self, name: str, description: str = "") -> dict:
+        """Create an empty customer-list Custom Audience. Returns {'id': ...}.
+
+        customer_file_source=USER_PROVIDED_ONLY asserts the data was collected
+        directly from the people themselves (required certification).
+        """
+        return self._post(
+            f"{self.ad_account_id}/customaudiences",
+            {
+                "name": name,
+                "description": description,
+                "subtype": "CUSTOM",
+                "customer_file_source": "USER_PROVIDED_ONLY",
+            },
+        )
+
+    def add_users_to_audience(
+        self, audience_id: str, schema: str, hashed_data: list[str]
+    ) -> dict:
+        """Upload a batch of pre-hashed identifiers to a Custom Audience.
+
+        schema: e.g. 'PHONE' or 'EMAIL'. hashed_data: SHA-256 hex digests.
+        Meta accepts up to 10,000 entries per call.
+        """
+        payload = _json({"schema": schema, "data": hashed_data})
+        return self._post(f"{audience_id}/users", {"payload": payload})
+
+    def create_lookalike_audience(
+        self, name: str, source_audience_id: str, country: str = "US", ratio: float = 0.01
+    ) -> dict:
+        """Create a Lookalike from a seed Custom Audience (ratio 0.01–0.20)."""
+        spec = _json({"type": "custom_ratio", "ratio": ratio, "country": country})
+        return self._post(
+            f"{self.ad_account_id}/customaudiences",
+            {
+                "name": name,
+                "subtype": "LOOKALIKE",
+                "origin_audience_id": source_audience_id,
+                "lookalike_spec": spec,
+            },
+        )
+
 
 # ---------- helpers ----------
 def _json(d: dict) -> str:
