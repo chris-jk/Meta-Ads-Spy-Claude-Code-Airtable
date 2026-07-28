@@ -105,18 +105,17 @@ def main() -> int:
             normed.append(n)
     hashes = [sha256(n) for n in normed]
 
+    # Counts only — never echo phone numbers or their hashes; both identify a
+    # person, and a SHA-256 of a phone number is trivially reversible.
     print(f"Read {len(raw)} numbers -> {len(normed)} unique valid, {len(dropped)} dropped, "
           f"{len(raw) - len(dropped) - len(normed)} duplicate")
-    if dropped:
-        print(f"  dropped (unparseable): {', '.join(dropped[:5])}{' ...' if len(dropped) > 5 else ''}")
     if len(normed) < 100:
         print(f"  ! WARNING: Meta needs ~100 MATCHED users to activate an audience; "
               f"you have {len(normed)} total before matching. Expect this to fall short.")
 
     if args.dry_run:
-        print("[DRY RUN] Sample hashes:")
-        for n, h in list(zip(normed, hashes))[:3]:
-            print(f"  {n[:3]}******** -> {h}")
+        print(f"[DRY RUN] Would upload {len(hashes)} hashed numbers in "
+              f"{(len(hashes) + BATCH_SIZE - 1) // BATCH_SIZE} batch(es).")
         print("[DRY RUN] No audience created.")
         return 0
 
