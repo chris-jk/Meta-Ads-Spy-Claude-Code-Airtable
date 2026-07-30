@@ -85,9 +85,15 @@ def event_count_7d(token, event_name):
     """Raw pixel events over 7 days. Counts browser and server copies separately
     (roughly 2x the deduplicated figure Events Manager shows), but it is the only
     volume signal that does not depend on ad attribution — so it still answers
-    'is the event flowing at all'."""
+    'is the event flowing at all'.
+
+    Returns None, not 0, when the call fails: an unreachable API and a genuinely
+    silent pixel are opposite problems, and reporting one as the other is how the
+    2026-07-29 run announced "conversion has never fired" during a DNS outage."""
     start = int((datetime.now(timezone.utc) - timedelta(days=7)).timestamp())
     res = get(token, f"{DATASET_ID}/stats", aggregation="event", start_time=start)
+    if "_error" in res:
+        return None
     total = 0
     for row in res.get("data", []):
         for entry in row.get("data", []):
@@ -107,12 +113,14 @@ def main():
     token = load_token()
     now = datetime.now(timezone.utc)
     conv_action = f"offsite_conversion.custom.{CONVERSION_ID}"
-    lines, alerts = [], []
+    # api_errors stay separate from alerts: "we could not look" must never be
+    # rendered as "your campaign is broken".
+    lines, alerts, api_errors = [], [], []
 
     for cid, label in CAMPAIGNS.items():
         camp = get(token, cid, fields="name,effective_status,stop_time")
         if "_error" in camp:
-            alerts.append(f"{label}: API error — {camp['_error']}")
+            api_errors.append(f"{label}: {camp['_error'][:90]}")
             continue
 
         ins = get(token, f"{cid}/insights", date_preset="yesterday",
@@ -172,28 +180,42 @@ def main():
     wrow = (week.get("data") or [{}])[0]
     wtaps = action_count(wrow.get("actions"), conv_action)
     wspend = float(wrow.get("spend", 0) or 0)
-    cpa = f"${wspend / wtaps:.2f}" if wtaps else "n/a"
+    week = week if "_error" not in week else {}
+    # Account-wide spend over one campaign's attributed conversions would
+    # overstate cost per tap, so per-campaign CPA is reported above instead.
+    lines.append(f"### Last 7 days\n- ${wspend:.2f} account spend | {wtaps} attributed taps")
     raw = event_count_7d(token, "AppStoreClick")
-    lines.append(f"### Last 7 days\n- ${wspend:.2f} spend | {wtaps} attributed taps | {cpa} per tap")
-    lines.append(f"- {raw} raw AppStoreClick events (browser + server, pre-dedup)")
-    if raw < 100:
-        alerts.append(f"AppStoreClick volume low ({raw} raw/wk) — may stall in learning")
+    if raw is None:
+        api_errors.append("pixel event stats unreachable")
+    else:
+        lines.append(f"- {raw} raw AppStoreClick events (browser + server, pre-dedup)")
+        if raw < 100:
+            alerts.append(f"AppStoreClick volume low ({raw} raw/wk) — may stall in learning")
 
     conv = get(token, CONVERSION_ID, fields="name,last_fired_time")
-    fired = parse_ts(conv.get("last_fired_time"))
-    if fired:
-        age = (now - fired).total_seconds() / 3600
-        lines.append(f"- conversion last fired {age:.0f}h ago")
-        if age > CONVERSION_QUIET_HOURS:
-            alerts.append(f"conversion silent for {age:.0f}h — optimisation is blind")
-    elif conv.get("last_fired_time"):
-        alerts.append(f"could not parse conversion timestamp: {conv['last_fired_time']}")
+    if "_error" in conv:
+        api_errors.append("conversion status unreachable")
     else:
-        alerts.append("conversion has never fired")
+        fired = parse_ts(conv.get("last_fired_time"))
+        if fired:
+            age = (now - fired).total_seconds() / 3600
+            lines.append(f"- conversion last fired {age:.0f}h ago")
+            if age > CONVERSION_QUIET_HOURS:
+                alerts.append(f"conversion silent for {age:.0f}h — optimisation is blind")
+        elif conv.get("last_fired_time"):
+            alerts.append(f"could not parse conversion timestamp: {conv['last_fired_time']}")
+        else:
+            alerts.append("conversion has never fired")
 
     header = f"# Grow Guide ads — {now.astimezone().strftime('%Y-%m-%d %H:%M %Z')}"
     body = [header, ""]
-    body += (["## NEEDS ATTENTION"] + [f"- {a}" for a in alerts] + [""]) if alerts else ["All clear.", ""]
+    if api_errors:
+        body += ["## COULD NOT CHECK (network or API, not the campaigns)"]
+        body += [f"- {e}" for e in api_errors] + [""]
+    if alerts:
+        body += ["## NEEDS ATTENTION"] + [f"- {a}" for a in alerts] + [""]
+    if not api_errors and not alerts:
+        body += ["All clear.", ""]
     body += lines
     report = "\n".join(body)
 
@@ -202,12 +224,19 @@ def main():
     (LOG_DIR / "latest.md").write_text(report)
     print(report)
 
-    if alerts:
-        msg = alerts[0] if len(alerts) == 1 else f"{len(alerts)} issues — see latest.md"
+    if alerts or api_errors:
+        if alerts:
+            msg = alerts[0] if len(alerts) == 1 else f"{len(alerts)} issues — see latest.md"
+        else:
+            msg = "could not reach Meta — check skipped, campaigns not verified"
+        # osascript rejects non-ASCII in an inline -e script, and most of these
+        # messages carry an em dash — which would silently kill the notification
+        # for exactly the alerts worth seeing.
+        safe = msg.encode("ascii", "replace").decode("ascii")
         subprocess.run(["osascript", "-e",
-                        f'display notification {json.dumps(msg)} with title "Grow Guide ads"'],
+                        f'display notification {json.dumps(safe)} with title "Grow Guide ads"'],
                        check=False)
-    return 1 if alerts else 0
+    return 1 if (alerts or api_errors) else 0
 
 
 if __name__ == "__main__":
