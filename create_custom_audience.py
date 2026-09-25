@@ -9,7 +9,7 @@ uploads the hashed numbers. Optionally seeds a Lookalike from it.
 Examples
 --------
     # dump the leads' phones first (from the letsgosite repo):
-    #   cd /Users/chris/GitHub/letsgosite/free-worker
+    #   cd /Users/chris/GitHub/web-apps/letsgosite/free-worker
     #   npx wrangler d1 execute letsgosite --remote --json \
     #     --command "SELECT phone FROM leads WHERE phone IS NOT NULL AND phone<>''" \
     #     | python3 -c "import sys,json; [print(r['phone']) for r in json.load(sys.stdin)[0]['results']]" \
