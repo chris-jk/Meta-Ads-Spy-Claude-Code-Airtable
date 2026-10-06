@@ -1,0 +1,9 @@
+{
+  "ad_account": "act_YOUR_AD_ACCOUNT_ID",
+  "conversion_id": "YOUR_CUSTOM_CONVERSION_ID",
+  "dataset_id": "YOUR_DATASET_OR_PIXEL_ID",
+  "campaigns": {
+    "YOUR_CAMPAIGN_ID_1": "Conversions (AppStoreClick)",
+    "YOUR_CAMPAIGN_ID_2": "Traffic (App Installs)"
+  }
+}
