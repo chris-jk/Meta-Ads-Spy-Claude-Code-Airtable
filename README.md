@@ -55,6 +55,16 @@ A `Competitor Ads` Airtable table with 20 fields per ad:
 - **Direct** — give Claude a list of Facebook page names or IDs
 - **Discover** — give Claude a URL (like your website or a competitor's Skool page) and it will suggest relevant competitors automatically
 
+## Account ids stay out of the repo
+
+The monitoring and audience scripts (`daily_ads_check.py`, `build_app_member_audience.py`) need ids that belong to one ad account: the ad account number, the custom conversion id, the dataset (pixel) id and the campaign ids. They are read from a git-ignored file, never hardcoded:
+
+```bash
+cp ads_config.example.json ads_config.json   # then fill in your ids
+```
+
+`lib/ads_config.py` loads the file named by the `ADS_CONFIG` environment variable if set, otherwise `ads_config.json` at the repo root, and stops with a message when a needed id is missing or still a placeholder. Tokens stay in `.env` as before.
+
 ## How it works under the hood
 
 1. `pull_ads.py` calls the Meta Ad Library API (`ads_archive`) for each competitor

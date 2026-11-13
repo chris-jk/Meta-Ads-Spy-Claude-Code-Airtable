@@ -14,3 +14,7 @@ snapshot.png
 # Lead PII — never commit
 lead_phones.txt
 phones.txt
+
+# Account ids for the monitoring and audience scripts: never commit
+# (copy ads_config.example.json to ads_config.json)
+ads_config.json

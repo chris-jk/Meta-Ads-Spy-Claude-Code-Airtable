@@ -9,7 +9,7 @@ uploads the hashed numbers. Optionally seeds a Lookalike from it.
 Examples
 --------
     # dump the leads' phones first (from the letsgosite repo):
-    #   cd /Users/chris/GitHub/letsgosite/free-worker
+    #   cd /Users/chris/GitHub/web-apps/letsgosite/free-worker
     #   npx wrangler d1 execute letsgosite --remote --json \
     #     --command "SELECT phone FROM leads WHERE phone IS NOT NULL AND phone<>''" \
     #     | python3 -c "import sys,json; [print(r['phone']) for r in json.load(sys.stdin)[0]['results']]" \
@@ -105,18 +105,17 @@ def main() -> int:
             normed.append(n)
     hashes = [sha256(n) for n in normed]
 
+    # Counts only — never echo phone numbers or their hashes; both identify a
+    # person, and a SHA-256 of a phone number is trivially reversible.
     print(f"Read {len(raw)} numbers -> {len(normed)} unique valid, {len(dropped)} dropped, "
           f"{len(raw) - len(dropped) - len(normed)} duplicate")
-    if dropped:
-        print(f"  dropped (unparseable): {', '.join(dropped[:5])}{' ...' if len(dropped) > 5 else ''}")
     if len(normed) < 100:
         print(f"  ! WARNING: Meta needs ~100 MATCHED users to activate an audience; "
               f"you have {len(normed)} total before matching. Expect this to fall short.")
 
     if args.dry_run:
-        print("[DRY RUN] Sample hashes:")
-        for n, h in list(zip(normed, hashes))[:3]:
-            print(f"  {n[:3]}******** -> {h}")
+        print(f"[DRY RUN] Would upload {len(hashes)} hashed numbers in "
+              f"{(len(hashes) + BATCH_SIZE - 1) // BATCH_SIZE} batch(es).")
         print("[DRY RUN] No audience created.")
         return 0
 

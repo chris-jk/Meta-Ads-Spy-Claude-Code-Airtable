@@ -318,8 +318,11 @@ class MarketingAPI:
 
         schema: e.g. 'PHONE' or 'EMAIL'. hashed_data: SHA-256 hex digests.
         Meta accepts up to 10,000 entries per call.
+
+        `schema` is a list of columns and `data` a list of rows, so a
+        single-key upload sends one column and one value per row.
         """
-        payload = _json({"schema": schema, "data": hashed_data})
+        payload = _json({"schema": [schema], "data": [[h] for h in hashed_data]})
         return self._post(f"{audience_id}/users", {"payload": payload})
 
     def create_lookalike_audience(

@@ -15,7 +15,7 @@ load_dotenv()
 BASE_ID = "appGYMvAoZJ0ZciMh"
 CLIENT_REC_ID = "recOW45pCqmu8iQK1"  # Lets Go Site
 BATCH = Path(
-    "/Users/chris/GitHub/Meta-Ads-Spy-Claude-Code-Airtable/letsgosite_ads/campaigns/"
+    "/Users/chris/GitHub/tools/meta-ads-spy/letsgosite_ads/campaigns/"
     "website_design_lead_capture/2026-05-19_chatgpt_square_posters"
 )
 
