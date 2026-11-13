@@ -46,14 +46,15 @@ PER_PAGE = 200
 MIN_SLICE = 25  # give up on a range this small and skip it
 MAX_PAGES = 500  # guard against an endless loop if the API stops signalling the end
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+SUPABASE_SPLITTABLE_ERROR = "Database error finding users"
 
 # Supabase credentials live in the Grow Guide repos, not this one; this repo
 # only has the ad token. The service-role key has moved between these files and
 # key names over time, and the app repo's slot is currently blank — so try each
 # candidate and keep the first that actually clears the admin endpoint.
 CRED_FILES = [
-    os.path.expanduser("~/GitHub/growguide-web/.dev.vars"),
-    os.path.expanduser("~/GitHub/grow_guide_app/.env"),
+    os.path.expanduser("~/GitHub/mobile-apps/grow-guide/web/.dev.vars"),
+    os.path.expanduser("~/GitHub/mobile-apps/grow-guide/app/.env"),
 ]
 SERVICE_KEY_NAMES = [
     "GROWGUIDE_SUPABASE_SERVICE_ROLE_KEY",
@@ -104,6 +105,12 @@ def sha256(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
+class SupabaseFetchError(RuntimeError):
+    def __init__(self, message: str, *, splittable: bool = False):
+        super().__init__(message)
+        self.splittable = splittable
+
+
 def fetch_members(url: str, service_key: str, confirmed_only: bool) -> tuple[list[str], dict]:
     """Page through Supabase Auth and return normalized emails + drop counts.
 
@@ -118,9 +125,8 @@ def fetch_members(url: str, service_key: str, confirmed_only: bool) -> tuple[lis
     seen: set[str] = set()
     page = 1
 
-    def get_slice(offset: int, size: int) -> list[dict] | None:
-        """Fetch `size` users from `offset`, or None if the API 500s or the
-        request fails in transport.
+    def get_slice(offset: int, size: int) -> list[dict]:
+        """Fetch `size` users from `offset`.
 
         Uses page/per_page as an offset pair: with per_page == size, page N
         covers offset (N-1)*size. Requires offset to be a multiple of size.
@@ -131,11 +137,23 @@ def fetch_members(url: str, service_key: str, confirmed_only: bool) -> tuple[lis
                 params={"page": offset // size + 1, "per_page": size},
                 timeout=60,
             )
-        except requests.RequestException:
-            return None
+        except requests.RequestException as e:
+            raise SupabaseFetchError(f"Supabase request failed: {type(e).__name__}") from e
         if resp.status_code == 200:
-            return resp.json().get("users", [])
-        return None
+            try:
+                body = resp.json()
+            except ValueError as e:
+                raise SupabaseFetchError("Supabase returned malformed JSON") from e
+            if not isinstance(body, dict) or not isinstance(body.get("users"), list):
+                raise SupabaseFetchError("Supabase returned an unexpected users payload")
+            return body["users"]
+
+        body = resp.text[:500]
+        splittable = resp.status_code == 500 and SUPABASE_SPLITTABLE_ERROR in body
+        raise SupabaseFetchError(
+            f"Supabase users fetch failed with HTTP {resp.status_code}",
+            splittable=splittable,
+        )
 
     def fetch_resilient(offset: int, size: int) -> list[dict]:
         """Fetch a slice, halving on failure to isolate an unreadable record.
@@ -145,9 +163,12 @@ def fetch_members(url: str, service_key: str, confirmed_only: bool) -> tuple[lis
         quarantines it so a single bad record costs a handful of addresses
         instead of the whole page.
         """
-        users = get_slice(offset, size)
-        if users is not None:
+        try:
+            users = get_slice(offset, size)
             return users
+        except SupabaseFetchError as e:
+            if not e.splittable:
+                raise
         if size <= MIN_SLICE:
             stats["unreadable"] += size
             print(f"  ! skipping {size} unreadable user(s) at offset {offset}")
