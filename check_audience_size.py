@@ -45,7 +45,7 @@ def main() -> int:
                 timeout=60,
             )
         except requests.RequestException as e:
-            print(f"{aud_id}: REQUEST FAILED {type(e).__name__}: {e}")
+            print(f"{aud_id}: REQUEST FAILED {type(e).__name__}")
             failed = True
             continue
         if r.status_code != 200:
@@ -58,9 +58,17 @@ def main() -> int:
             print(f"{aud_id}: INVALID JSON RESPONSE: {e}")
             failed = True
             continue
+        if not isinstance(d, dict):
+            print(f"{aud_id}: MALFORMED RESPONSE: expected object")
+            failed = True
+            continue
         lo = d.get("approximate_count_lower_bound")
         hi = d.get("approximate_count_upper_bound")
         op = (d.get("operation_status") or {})
+        if not isinstance(op, dict):
+            print(f"{aud_id}: MALFORMED RESPONSE: invalid operation_status")
+            failed = True
+            continue
         code = op.get("code")
         size = (
             f"{lo}–{hi}" if lo is not None and hi is not None

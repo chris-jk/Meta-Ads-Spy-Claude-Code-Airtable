@@ -109,6 +109,11 @@ def action_count(actions, action_type):
     return 0
 
 
+def is_established(adset, now):
+    created = parse_ts(adset.get("created_time"))
+    return created is None or (now - created) >= timedelta(hours=36)
+
+
 def main():
     token = load_token()
     now = datetime.now(timezone.utc)
@@ -125,31 +130,51 @@ def main():
 
         ins = get(token, f"{cid}/insights", date_preset="yesterday",
                   fields="spend,impressions,clicks,actions")
-        row = (ins.get("data") or [{}])[0]
-        spend = float(row.get("spend", 0) or 0)
-        clicks = int(row.get("clicks", 0) or 0)
-        taps = action_count(row.get("actions"), conv_action)
+        if "_error" in ins:
+            api_errors.append(f"{label} insights: {ins['_error'][:90]}")
+            spend = clicks = taps = None
+        else:
+            row = (ins.get("data") or [{}])[0]
+            spend = float(row.get("spend", 0) or 0)
+            clicks = int(row.get("clicks", 0) or 0)
+            taps = action_count(row.get("actions"), conv_action)
 
         sets = get(token, f"{cid}/adsets",
                    fields="name,effective_status,daily_budget,end_time,learning_stage_info,created_time")
-        active = [s for s in sets.get("data", []) if s.get("effective_status") == "ACTIVE"]
-        budget = sum(int(s.get("daily_budget") or 0) for s in active) / 100
-
-        # An ad set created today had no chance to spend yesterday. Alerting on
-        # that is a guaranteed false positive on every launch day.
-        newest = max((parse_ts(s.get("created_time")) for s in active
-                      if parse_ts(s.get("created_time"))), default=None)
-        too_new = newest is not None and (now - newest) < timedelta(hours=36)
+        if "_error" in sets:
+            api_errors.append(f"{label} ad sets: {sets['_error'][:90]}")
+            active = []
+            established = []
+            budget = None
+        else:
+            active = [s for s in sets.get("data", []) if s.get("effective_status") == "ACTIVE"]
+            established = [s for s in active if is_established(s, now)]
+            budget = (
+                sum(int(s.get("daily_budget") or 0) for s in established) / 100
+                if active else None
+            )
 
         lines.append(f"### {label}")
-        lines.append(f"- status: {camp.get('effective_status')} | "
-                     f"yesterday: ${spend:.2f} of ${budget:.2f} | {clicks} clicks | {taps} store taps")
-        if too_new:
-            lines.append("- launched in the last 36h — pacing check skipped")
+        metric_bits = [f"status: {camp.get('effective_status')}"]
+        if spend is not None:
+            spend_part = f"yesterday: ${spend:.2f}"
+            if budget is not None:
+                spend_part += f" of ${budget:.2f} established budget"
+            metric_bits.append(spend_part)
+            metric_bits.append(f"{clicks} clicks")
+            metric_bits.append(f"{taps} store taps")
+        lines.append("- " + " | ".join(metric_bits))
+        if active and len(established) < len(active):
+            skipped = len(active) - len(established)
+            lines.append(f"- {skipped} active ad set(s) launched in the last 36h — excluded from pacing")
 
         if camp.get("effective_status") != "ACTIVE":
             alerts.append(f"{label} is {camp.get('effective_status')} — not delivering")
-        elif too_new:
+        elif sets.get("_error"):
+            pass
+        elif not active:
+            alerts.append(f"{label} has no active ad sets — not delivering")
+        elif spend is None:
             pass
         elif budget and spend < budget * UNDER_PACING:
             alerts.append(f"{label} underspent: ${spend:.2f} of ${budget:.2f}")
@@ -168,6 +193,10 @@ def main():
                     alerts.append(f"{label} ad set ends in {days}d — extend or it stops")
 
         ads = get(token, f"{cid}/ads", fields="name,effective_status,issues_info")
+        if "_error" in ads:
+            api_errors.append(f"{label} ads: {ads['_error'][:90]}")
+            lines.append("")
+            continue
         for ad in ads.get("data", []):
             if ad.get("issues_info"):
                 summary = ad["issues_info"][0].get("error_summary", "issue")
@@ -177,13 +206,15 @@ def main():
         lines.append("")
 
     week = get(token, f"{ACCOUNT}/insights", date_preset="last_7d", fields="spend,actions")
-    wrow = (week.get("data") or [{}])[0]
-    wtaps = action_count(wrow.get("actions"), conv_action)
-    wspend = float(wrow.get("spend", 0) or 0)
-    week = week if "_error" not in week else {}
-    # Account-wide spend over one campaign's attributed conversions would
-    # overstate cost per tap, so per-campaign CPA is reported above instead.
-    lines.append(f"### Last 7 days\n- ${wspend:.2f} account spend | {wtaps} attributed taps")
+    if "_error" in week:
+        api_errors.append(f"account last 7 days: {week['_error'][:90]}")
+    else:
+        wrow = (week.get("data") or [{}])[0]
+        wtaps = action_count(wrow.get("actions"), conv_action)
+        wspend = float(wrow.get("spend", 0) or 0)
+        # Account-wide spend over one campaign's attributed conversions would
+        # overstate cost per tap, so per-campaign CPA is reported above instead.
+        lines.append(f"### Last 7 days\n- ${wspend:.2f} account spend | {wtaps} attributed taps")
     raw = event_count_7d(token, "AppStoreClick")
     if raw is None:
         api_errors.append("pixel event stats unreachable")
