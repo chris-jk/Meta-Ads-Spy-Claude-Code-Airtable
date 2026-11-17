@@ -27,11 +27,13 @@ GRAPH = "https://graph.facebook.com/v21.0"
 
 # Account-specific ids come from ads_config.json (git-ignored), never from this
 # file: copy ads_config.example.json to ads_config.json and fill it in.
-_IDS = ads_config.load(required=("ad_account", "conversion_id", "dataset_id", "campaigns"))
+_IDS = ads_config.load(required=("ad_account", "conversion_id", "dataset_id"))
 ACCOUNT = _IDS["ad_account"]            # act_<id>
 CONVERSION_ID = _IDS["conversion_id"]   # custom conversion the campaigns optimise for
 DATASET_ID = _IDS["dataset_id"]         # dataset (pixel) that receives AppStoreClick
-CAMPAIGNS = _IDS["campaigns"]           # {campaign id: label}
+# Campaigns that optimise for the AppStoreClick conversion. The pixel and
+# conversion alerts only matter while one of these is running.
+CONVERSION_CAMPAIGNS = _IDS.get("campaigns") or {}
 # Alert thresholds, as a fraction of the ad set's daily budget.
 UNDER_PACING = 0.5
 OVER_PACING = 1.3
@@ -102,6 +104,20 @@ def event_count_7d(token, event_name):
     return total
 
 
+def phone_push(title, body):
+    """Phone push through the check-in skill's sender (push-relay, ntfy fallback).
+    The check runs on the Mac mini, where a desktop notification reaches no one."""
+    try:
+        import importlib.util
+        path = Path.home() / ".claude/skills/checkin/checkin.py"
+        spec = importlib.util.spec_from_file_location("checkin_push", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.push(title, body)
+    except Exception as e:  # noqa: BLE001 — the report on disk still stands
+        print(f"phone push failed: {e}", file=sys.stderr)
+
+
 def action_count(actions, action_type):
     for a in actions or []:
         if a.get("action_type") == action_type:
@@ -122,8 +138,22 @@ def main():
     # rendered as "your campaign is broken".
     lines, alerts, api_errors = [], [], []
 
-    for cid, label in CAMPAIGNS.items():
-        camp = get(token, cid, fields="name,effective_status,stop_time")
+    # Watch whatever is running in the account, so a new campaign is never
+    # missed because nobody added its id to the config (11-16: the check
+    # watched two paused campaigns while the live one went unreported).
+    running = get(token, f"{ACCOUNT}/campaigns", fields="name,effective_status",
+                  effective_status=json.dumps(["ACTIVE"]), limit=50)
+    if "_error" in running:
+        api_errors.append(f"campaign list: {running['_error'][:90]}")
+        watched = {}
+    else:
+        watched = {c["id"]: c["name"][:60] for c in running.get("data", [])}
+        if not watched:
+            alerts.append("no Grow Guide campaign is running")
+    conversion_live = any(cid in watched for cid in CONVERSION_CAMPAIGNS)
+
+    for cid, label in watched.items():
+        camp = get(token, cid, fields="name,effective_status,stop_time,daily_budget")
         if "_error" in camp:
             api_errors.append(f"{label}: {camp['_error'][:90]}")
             continue
@@ -132,12 +162,13 @@ def main():
                   fields="spend,impressions,clicks,actions")
         if "_error" in ins:
             api_errors.append(f"{label} insights: {ins['_error'][:90]}")
-            spend = clicks = taps = None
+            spend = clicks = taps = installs = None
         else:
             row = (ins.get("data") or [{}])[0]
             spend = float(row.get("spend", 0) or 0)
             clicks = int(row.get("clicks", 0) or 0)
             taps = action_count(row.get("actions"), conv_action)
+            installs = action_count(row.get("actions"), "mobile_app_install")
 
         sets = get(token, f"{cid}/adsets",
                    fields="name,effective_status,daily_budget,end_time,learning_stage_info,created_time")
@@ -154,6 +185,8 @@ def main():
                 if active else None
             )
 
+        if not budget and camp.get("daily_budget"):
+            budget = int(camp["daily_budget"]) / 100  # campaign-level budget
         lines.append(f"### {label}")
         metric_bits = [f"status: {camp.get('effective_status')}"]
         if spend is not None:
@@ -162,7 +195,9 @@ def main():
                 spend_part += f" of ${budget:.2f} established budget"
             metric_bits.append(spend_part)
             metric_bits.append(f"{clicks} clicks")
-            metric_bits.append(f"{taps} store taps")
+            metric_bits.append(f"{installs} installs")
+            if taps:
+                metric_bits.append(f"{taps} store taps")
         lines.append("- " + " | ".join(metric_bits))
         if active and len(established) < len(active):
             skipped = len(active) - len(established)
@@ -220,7 +255,7 @@ def main():
         api_errors.append("pixel event stats unreachable")
     else:
         lines.append(f"- {raw} raw AppStoreClick events (browser + server, pre-dedup)")
-        if raw < 100:
+        if raw < 100 and conversion_live:
             alerts.append(f"AppStoreClick volume low ({raw} raw/wk) — may stall in learning")
 
     conv = get(token, CONVERSION_ID, fields="name,last_fired_time")
@@ -231,11 +266,11 @@ def main():
         if fired:
             age = (now - fired).total_seconds() / 3600
             lines.append(f"- conversion last fired {age:.0f}h ago")
-            if age > CONVERSION_QUIET_HOURS:
+            if age > CONVERSION_QUIET_HOURS and conversion_live:
                 alerts.append(f"conversion silent for {age:.0f}h — optimisation is blind")
         elif conv.get("last_fired_time"):
             alerts.append(f"could not parse conversion timestamp: {conv['last_fired_time']}")
-        else:
+        elif conversion_live:
             alerts.append("conversion has never fired")
 
     header = f"# Grow Guide ads — {now.astimezone().strftime('%Y-%m-%d %H:%M %Z')}"
@@ -267,6 +302,7 @@ def main():
         subprocess.run(["osascript", "-e",
                         f'display notification {json.dumps(safe)} with title "Grow Guide ads"'],
                        check=False)
+        phone_push("Grow Guide ads", msg)
     return 1 if (alerts or api_errors) else 0
 
 
